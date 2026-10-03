@@ -1,4 +1,4 @@
-/* Thrive Payroll — clean HR SaaS look, mobile-first, dark-mode aware */
+/* Economy Suites Payroll — clean HR SaaS look, mobile-first, dark-mode aware */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 :root {
   --brand: #1E5B44; --brand-dark: #16332D; --brand-ink: #1C3530;
@@ -116,6 +116,8 @@ body {
 .pill.approved, .pill.open { background: var(--ok-bg); color: var(--brand); }
 .pill.denied { background: var(--err-bg); color: #b91c1c; }
 .pill.closed { background: #e5e7eb; color: #4b5563; }
+.pill.paid { background: var(--ok-bg); color: var(--brand); }
+.pill.owed { background: var(--warn-bg); color: var(--warn); }
 .rowline { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); gap: 8px; }
 .rowline:last-child { border-bottom: none; }
 .rowline .t { font-weight: 700; }
@@ -187,6 +189,8 @@ table.data tr:last-child td { border-bottom: none; }
   .pill.denied { background: var(--err-bg); color: #f87171; }
   .pill.approved, .pill.open { background: var(--ok-bg); color: #5ecb96; }
   .pill.closed { background: #2a3532; color: #9aa0a6; }
+  .pill.paid { background: var(--ok-bg); color: #5ecb96; }
+  .pill.owed { background: var(--warn-bg); color: #fbbf24; }
   .auth-tab.active { background: #1c2422; color: #5ecb96; }
   .auth-tabs { background: #141a19; }
   .warn-box { background: var(--warn-bg); border-color: #6b4d16; color: #fbbf24; }
