@@ -1,4 +1,4 @@
-/* Thrive Payroll — Supabase-backed time tracking + payroll */
+/* Economy Suites Payroll — Supabase-backed time tracking + payroll */
 const SUPABASE_URL = 'https://vjaibkfckxauoxdsojfn.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_yqOFCrP8mBYm32x2cUYFYg_eHMDWB18';
 const APP_URL = 'https://tulsaeconomyinn.github.io/payroll/';
@@ -41,11 +41,11 @@ function chiWeekday(dateStr) { // 0=Sun..6=Sat for a YYYY-MM-DD in Chicago
   // noon UTC avoids DST edge weirdness when converting back
   return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
 }
-function mondayOf(dateStr) {
+function fridayOf(dateStr) { // Friday starting the Fri–Thu pay week containing dateStr
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12));
-  const wd = dt.getUTCDay(); // 0 Sun
-  const shift = (wd + 6) % 7; // days since Monday
+  const wd = dt.getUTCDay(); // 0 Sun .. 6 Sat; Friday = 5
+  const shift = (wd + 2) % 7; // days since Friday
   dt.setUTCDate(dt.getUTCDate() - shift);
   return dt.toISOString().slice(0, 10);
 }
@@ -68,9 +68,15 @@ function fmtDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-US', {timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric'});
 }
-function weekLabel(mondayStr) {
-  return fmtDate(mondayStr) + ' – ' + fmtDate(addDays(mondayStr, 6));
+function fmtDateShort(dateStr) { // 'Oct 2' — no year
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-US', {timeZone: 'UTC', month: 'short', day: 'numeric'});
 }
+function weekLabel(friStr) { // 'Oct 2 – Oct 8 → Payday Oct 9'
+  return fmtDateShort(friStr) + ' – ' + fmtDateShort(addDays(friStr, 6)) + ' → Payday ' + fmtDateShort(addDays(friStr, 7));
+}
+function paydayOf(friStr) { return addDays(friStr, 7); }
 function toLocalInput(ts) {
   // UTC timestamp -> 'YYYY-MM-DDTHH:MM' wall time in Chicago (for datetime-local)
   if (!ts) return '';
@@ -101,8 +107,31 @@ function entryHours(e) {
   if (!e.clock_out) return null;
   return (new Date(e.clock_out) - new Date(e.clock_in)) / 3600000;
 }
-function entryWeek(e) { // week (Monday) the entry belongs to, by clock-in day in Chicago
-  return mondayOf(chiDateStr(new Date(e.clock_in)));
+function entryWeek(e) { // pay week (Friday) the entry belongs to, by clock-in day in Chicago
+  return fridayOf(chiDateStr(new Date(e.clock_in)));
+}
+
+/* ---------- GEOLOCATION (never blocks clock in/out) ---------- */
+function getPosition() { // resolves {lat, lng} or null
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    const timer = setTimeout(() => finish(null), 8000);
+    navigator.geolocation.getCurrentPosition(
+      pos => { clearTimeout(timer); finish({lat: pos.coords.latitude, lng: pos.coords.longitude}); },
+      () => { clearTimeout(timer); finish(null); },
+      {enableHighAccuracy: false, timeout: 7000, maximumAge: 60000}
+    );
+  });
+}
+function locHtml(e, which) { // 'in' | 'out' — location marker; managers get a map link
+  const lat = which === 'in' ? e.clock_in_lat : e.clock_out_lat;
+  const lng = which === 'in' ? e.clock_in_lng : e.clock_out_lng;
+  if (lat == null || lng == null) return '';
+  const tag = (which === 'in' ? 'in' : 'out') + ' 📍';
+  if (isManager()) return ` · ${tag} <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" rel="noopener">map</a>`;
+  return ` · ${tag}`;
 }
 
 /* ---------- AUTH ---------- */
@@ -267,6 +296,7 @@ function tabsForRole() {
     ['dashboard', '📊', 'Team'],
     ['timesheets', '📝', 'Sheets'],
     ['payroll', '💵', 'Payroll'],
+    ['payhistory', '🧾', 'History'],
     ['timeoff', '🏖️', 'Time Off'],
     ['team', '👥', 'Staff'],
   ];
@@ -275,6 +305,7 @@ function tabsForRole() {
     ['timesheet', '📝', 'Timesheet'],
     ['timeoff', '🏖️', 'Time Off'],
     ['pay', '💵', 'Pay'],
+    ['payhistory', '🧾', 'History'],
   ];
 }
 function buildNav() {
@@ -295,6 +326,7 @@ async function renderTab() {
     else if (currentTab === 'dashboard') await viewDashboard(content);
     else if (currentTab === 'timesheets') await viewTimesheets(content);
     else if (currentTab === 'payroll') await viewPayroll(content);
+    else if (currentTab === 'payhistory') await viewPayHistory(content);
     else if (currentTab === 'team') await viewTeam(content);
   } catch (e) {
     content.innerHTML = `<div class="card"><div class="error-box">Something went wrong: ${esc(e.message)}</div>
@@ -308,24 +340,24 @@ function closeModal() { $('modal-overlay').classList.add('hidden'); $('modal-box
 window.closeModal = closeModal; window.renderTab = renderTab;
 
 /* ---------- PAY PERIODS ---------- */
-async function getPeriod(mondayStr) {
-  if (periodsCache[mondayStr]) return periodsCache[mondayStr];
-  const { data } = await client.from('pr_pay_periods').select('*').eq('start_date', mondayStr).maybeSingle();
+async function getPeriod(friStr) {
+  if (periodsCache[friStr]) return periodsCache[friStr];
+  const { data } = await client.from('pr_pay_periods').select('*').eq('start_date', friStr).maybeSingle();
   const row = data || null;
-  periodsCache[mondayStr] = row;
+  periodsCache[friStr] = row;
   return row;
 }
-async function ensurePeriod(mondayStr) {
-  let p = await getPeriod(mondayStr);
+async function ensurePeriod(friStr) {
+  let p = await getPeriod(friStr);
   if (p) return p;
   const { data, error } = await client.from('pr_pay_periods')
-    .insert({start_date: mondayStr, end_date: addDays(mondayStr, 6)}).select().single();
+    .insert({start_date: friStr, end_date: addDays(friStr, 6)}).select().single();
   if (error) { // race: someone else created it
-    const retry = await client.from('pr_pay_periods').select('*').eq('start_date', mondayStr).maybeSingle();
-    periodsCache[mondayStr] = retry.data || null;
-    return periodsCache[mondayStr];
+    const retry = await client.from('pr_pay_periods').select('*').eq('start_date', friStr).maybeSingle();
+    periodsCache[friStr] = retry.data || null;
+    return periodsCache[friStr];
   }
-  periodsCache[mondayStr] = data;
+  periodsCache[friStr] = data;
   return data;
 }
 
@@ -336,11 +368,11 @@ document.addEventListener('DOMContentLoaded', init);
 /* ---------- HOME: clock in / out ---------- */
 async function viewHome(content) {
   const todayStr = chiDateStr(new Date());
-  const weekMon = mondayOf(todayStr);
+  const weekFri = fridayOf(todayStr);
   // today's entries + this week's entries
   const { data: entries } = await client.from('pr_time_entries')
     .select('*').eq('user_id', me.id)
-    .gte('clock_in', weekMon + 'T00:00:00Z').order('clock_in', {ascending: false});
+    .gte('clock_in', weekFri + 'T00:00:00Z').order('clock_in', {ascending: false});
   const all = entries || [];
   const todayEntries = all.filter(e => chiDateStr(new Date(e.clock_in)) === todayStr);
   const todayHrs = todayEntries.reduce((s, e) => s + (entryHours(e) || 0), 0);
@@ -354,7 +386,7 @@ async function viewHome(content) {
   const offNames = (ptoToday || []).filter(r => r.user_id !== me.id)
     .map(r => (r.pr_profiles && r.pr_profiles.full_name) || 'A teammate');
 
-  const period = await getPeriod(weekMon);
+  const period = await getPeriod(weekFri);
   const locked = period && period.status === 'closed';
 
   let html = `<div class="section-head"><h2>Hi, ${esc(me.full_name || 'there')} 👋</h2></div>`;
@@ -406,9 +438,12 @@ async function viewHome(content) {
 async function doClockIn() {
   const property = $('clock-property') ? $('clock-property').value : me.property;
   const btn = $('clock-btn');
-  btn.disabled = true; btn.textContent = 'Clocking in…';
+  btn.disabled = true; btn.textContent = 'Getting location…';
+  const loc = await getPosition(); // null if denied/unavailable — never blocks
+  btn.textContent = 'Clocking in…';
   const { error } = await client.from('pr_time_entries').insert({
-    user_id: me.id, clock_in: new Date().toISOString(), property
+    user_id: me.id, clock_in: new Date().toISOString(), property,
+    clock_in_lat: loc ? loc.lat : null, clock_in_lng: loc ? loc.lng : null
   });
   if (error) { alert('Could not clock in: ' + error.message); }
   periodsCache = {};
@@ -418,9 +453,13 @@ async function doClockIn() {
 async function doClockOut() {
   if (!myOpenEntry) return;
   const btn = $('clock-btn');
-  btn.disabled = true; btn.textContent = 'Clocking out…';
+  btn.disabled = true; btn.textContent = 'Getting location…';
+  const loc = await getPosition(); // null if denied/unavailable — never blocks
+  btn.textContent = 'Clocking out…';
   const { error } = await client.from('pr_time_entries')
-    .update({ clock_out: new Date().toISOString() }).eq('id', myOpenEntry.id);
+    .update({ clock_out: new Date().toISOString(),
+      clock_out_lat: loc ? loc.lat : null, clock_out_lng: loc ? loc.lng : null })
+    .eq('id', myOpenEntry.id);
   if (error) { alert('Could not clock out: ' + error.message); }
   periodsCache = {};
   await renderTab();
@@ -452,7 +491,7 @@ function fixStaleEntry(entry) {
 let tsWeek = null;
 async function viewTimesheet(content, managerMode, targetUserId, targetName) {
   const uid = targetUserId || me.id;
-  if (!tsWeek) tsWeek = mondayOf(chiDateStr(new Date()));
+  if (!tsWeek) tsWeek = fridayOf(chiDateStr(new Date()));
   const { data: entries } = await client.from('pr_time_entries')
     .select('*').eq('user_id', uid)
     .gte('clock_in', tsWeek + 'T00:00:00Z').lt('clock_in', addDays(tsWeek, 7) + 'T00:00:00Z')
@@ -492,7 +531,7 @@ async function viewTimesheet(content, managerMode, targetUserId, targetName) {
           const h2 = entryHours(e);
           return `<div class="rowline">
             <div><div class="t">${fmtTime(e.clock_in)} → ${e.clock_out ? fmtTime(e.clock_out) : '<span class="pill pending">open</span>'}</div>
-            <div class="s">${esc(e.property || '')}${e.note ? ' · ' + esc(e.note) : ''}${e.edited_by ? ' · ✏️ corrected' : ''}</div></div>
+            <div class="s">${esc(e.property || '')}${e.note ? ' · ' + esc(e.note) : ''}${e.edited_by ? ' · ✏️ corrected' : ''}${locHtml(e, 'in')}${locHtml(e, 'out')}</div></div>
             <div class="num"><b>${h2 == null ? '—' : hrs(h2)}</b></div>
           </div>`;
         }).join('') + `</div>`;
@@ -654,7 +693,7 @@ async function viewPay(content) {
       const g = grossForWeek(weeks[w], myComp, me.pay_type);
       return `<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <b>Week of ${fmtDate(w)}</b><b style="font-size:18px">${money(g.gross)}</b>
+          <b>${weekLabel(w)}</b><b style="font-size:18px">${money(g.gross)}</b>
         </div>
         <div class="rowline"><div class="s">Total hours</div><div class="num">${hrs(g.hours)}</div></div>
         <div class="rowline"><div class="s">Rate</div><div class="num">${me.pay_type === 'salary' ? money(g.rate) + '/wk' : money(g.rate) + '/hr'}</div></div>
@@ -670,13 +709,13 @@ async function viewPay(content) {
 
 /* ---------- DASHBOARD: who's in, pending PTO, week totals ---------- */
 async function viewDashboard(content) {
-  const weekMon = mondayOf(chiDateStr(new Date()));
+  const weekFri = fridayOf(chiDateStr(new Date()));
   const [profilesRes, openRes, pendingRes, weekRes] = await Promise.all([
     client.from('pr_profiles').select('id, full_name, property, active').eq('active', true).order('full_name'),
     client.from('pr_time_entries').select('*, pr_profiles!pr_time_entries_user_id_fkey(full_name, property)').is('clock_out', null).order('clock_in'),
     client.from('pr_pto_requests').select('*, pr_profiles!pr_pto_requests_user_id_fkey(full_name)').eq('status', 'pending').order('start_date'),
     client.from('pr_time_entries').select('user_id, clock_in, clock_out')
-      .gte('clock_in', weekMon + 'T00:00:00Z').not('clock_out', 'is', null)
+      .gte('clock_in', weekFri + 'T00:00:00Z').not('clock_out', 'is', null)
   ]);
   const profiles = profilesRes.data || [];
   const openList = openRes.data || [];
@@ -731,7 +770,7 @@ async function decidePto(id, status) {
 /* ---------- MANAGER TIMESHEETS ---------- */
 let mTsWeek = null, mTsProp = 'all', mTsUser = 'all';
 async function viewTimesheets(content) {
-  if (!mTsWeek) mTsWeek = mondayOf(chiDateStr(new Date()));
+  if (!mTsWeek) mTsWeek = fridayOf(chiDateStr(new Date()));
   const { data: profiles } = await client.from('pr_profiles')
     .select('id, full_name, property').eq('active', true).order('full_name');
   const plist = profiles || [];
@@ -785,7 +824,7 @@ async function viewTimesheets(content) {
           <b>${esc(nm)}</b><b>${hrs(th)} hrs</b></div>` +
         es.map(e => `<div class="rowline">
           <div><div class="t">${fmtDateTime(e.clock_in)} → ${e.clock_out ? fmtTime(e.clock_out) : '<span class="pill pending">open</span>'}</div>
-          <div class="s">${esc(e.property || '')}${e.note ? ' · ' + esc(e.note) : ''}${e.edited_by ? ' · ✏️ corrected' : ''}</div></div>
+          <div class="s">${esc(e.property || '')}${e.note ? ' · ' + esc(e.note) : ''}${e.edited_by ? ' · ✏️ corrected' : ''}${locHtml(e, 'in')}${locHtml(e, 'out')}</div></div>
           <div style="display:flex;gap:6px;align-items:center"><b>${entryHours(e) == null ? '—' : hrs(entryHours(e))}</b>
           ${!locked ? `<button class="btn-secondary btn-small" data-edit="${e.id}">Edit</button>` : ''}</div>
         </div>`).join('') + `</div>`;
@@ -840,40 +879,76 @@ async function editEntryModal(entryId) {
 /* ---------- PAYROLL RUN ---------- */
 let prWeek = null;
 async function viewPayroll(content) {
-  if (!prWeek) prWeek = mondayOf(chiDateStr(new Date()));
+  if (!prWeek) prWeek = fridayOf(chiDateStr(new Date()));
   const period = await ensurePeriod(prWeek);
   const locked = period.status === 'closed';
+  const payday = paydayOf(prWeek);
 
-  const [{ data: profiles }, { data: compRows }, { data: entries }] = await Promise.all([
+  // entries across recent weeks (for running balances) + all recorded payments
+  const since = addDays(prWeek, -7 * 26);
+  const [{ data: profiles }, { data: compRows }, { data: entries }, { data: payments }] = await Promise.all([
     client.from('pr_profiles').select('id, full_name, email, property, pay_type').eq('active', true).order('full_name'),
     client.from('pr_comp').select('user_id, pay_rate'),
     client.from('pr_time_entries').select('user_id, clock_in, clock_out')
-      .gte('clock_in', prWeek + 'T00:00:00Z').lt('clock_in', addDays(prWeek, 7) + 'T00:00:00Z')
-      .not('clock_out', 'is', null)
+      .gte('clock_in', since + 'T00:00:00Z').not('clock_out', 'is', null),
+    client.from('pr_payments').select('*')
   ]);
+  const plist = profiles || [];
   const compMap = {}; (compRows || []).forEach(c => compMap[c.user_id] = Number(c.pay_rate));
-  const hrsByUser = {}; (entries || []).forEach(e => {
-    hrsByUser[e.user_id] = (hrsByUser[e.user_id] || 0) + entryHours(e);
+  const profMap = {}; plist.forEach(p => profMap[p.id] = p);
+  const hrsUW = {}; // uid -> {weekStart: hours}
+  (entries || []).forEach(e => {
+    const w = entryWeek(e);
+    (hrsUW[e.user_id] = hrsUW[e.user_id] || {});
+    hrsUW[e.user_id][w] = (hrsUW[e.user_id][w] || 0) + entryHours(e);
+  });
+  const payUW = {}; // uid -> {weekStart: payment}
+  (payments || []).forEach(p => {
+    (payUW[p.user_id] = payUW[p.user_id] || {})[p.week_start] = p;
   });
 
-  const rows = (profiles || []).map(p => {
-    const h = hrsByUser[p.id] || 0;
+  const r2 = n => Math.round(Number(n || 0) * 100) / 100;
+  function grossFor(uid, w) {
+    const p = profMap[uid], rate = compMap[uid];
+    if (rate == null || !p) return 0;
+    if (p.pay_type === 'salary') return r2(rate / 52);
+    return r2((hrsUW[uid] && hrsUW[uid][w] || 0) * rate);
+  }
+  function paidFor(uid, w) {
+    return (payUW[uid] && payUW[uid][w]) ? r2(payUW[uid][w].gross) : 0;
+  }
+  function unpaidWeeks(uid) {
+    const weeks = new Set([...Object.keys(hrsUW[uid] || {}), ...Object.keys(payUW[uid] || {})]);
+    return [...weeks].sort().reverse()
+      .map(w => ({w, bal: r2(Math.max(0, grossFor(uid, w) - paidFor(uid, w)))}))
+      .filter(x => x.bal > 0.005);
+  }
+  function balanceFor(uid) { return r2(unpaidWeeks(uid).reduce((s, x) => s + x.bal, 0)); }
+
+  const rows = plist.map(p => {
+    const h = (hrsUW[p.id] && hrsUW[p.id][prWeek]) || 0;
     const rate = compMap[p.id];
-    let gross = 0, note = '';
-    if (rate == null) { note = 'no rate set'; }
-    else if (p.pay_type === 'salary') { gross = rate / 52; note = 'salary'; }
-    else { gross = h * rate; }
-    return {...p, hours: h, gross, rate, note};
+    const gross = grossFor(p.id, prWeek);
+    const pay = payUW[p.id] && payUW[p.id][prWeek];
+    const paid = pay ? r2(pay.gross) : 0;
+    const weekBal = r2(Math.max(0, gross - paid));
+    return {...p, hours: h, gross, rate, paid, payRec: pay || null, weekBal,
+      totalBal: balanceFor(p.id), unpaid: unpaidWeeks(p.id),
+      note: rate == null ? 'no rate set' : (p.pay_type === 'salary' ? 'salary' : '')};
   });
-  const totGross = rows.reduce((s, r) => s + r.gross, 0);
+  const totGross = r2(rows.reduce((s, r) => s + r.gross, 0));
   const totHrs = rows.reduce((s, r) => s + r.hours, 0);
+  const totBal = r2(rows.reduce((s, r) => s + r.totalBal, 0));
+  const unpaidThisWeek = rows.filter(r => r.weekBal > 0.005);
+  const withBal = rows.filter(r => r.totalBal > 0.005);
 
   let html = `<div class="section-head"><h2>Payroll</h2>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary btn-small" id="pr-csv">⬇ CSV</button>
+      ${unpaidThisWeek.length ? `<button class="btn-primary btn-small" id="pr-payall">Mark week paid (${unpaidThisWeek.length})</button>` : ''}
       ${locked
         ? `<button class="btn-secondary btn-small" id="pr-reopen">Reopen week</button>`
-        : `<button class="btn-primary btn-small" id="pr-close">Close period</button>`}
+        : `<button class="btn-secondary btn-small" id="pr-close">Close period</button>`}
     </div></div>
   <div class="card"><div class="cal-nav">
     <button class="btn-secondary btn-small" id="pr-prev">← Prev</button>
@@ -881,30 +956,66 @@ async function viewPayroll(content) {
       ${locked ? ' <span class="pill closed">closed</span>' : ' <span class="pill open">open</span>'}</div>
     <button class="btn-secondary btn-small" id="pr-next">Next →</button>
   </div>
-  <div class="muted" style="margin-top:8px">Weekly pay period (Mon–Sun, CT). Gross = total hours × rate. Closing locks the week — no more clock edits.</div></div>`;
+  <div class="muted" style="margin-top:8px">Pay week Fri–Thu (CT) · payday ${fmtDate(payday)}. Gross = total hours × rate. "Mark paid" records the payment and zeroes that week's balance. Closing locks the week — no more clock edits.</div></div>`;
 
   html += `<div class="kpi-row">
     <div class="kpi"><div class="v">${rows.length}</div><div class="l">Employees</div></div>
-    <div class="kpi"><div class="v">${hrs(totHrs)}</div><div class="l">Total hours</div></div>
-    <div class="kpi"><div class="v">${money(totGross)}</div><div class="l">Gross payroll</div></div>
+    <div class="kpi"><div class="v">${hrs(totHrs)}</div><div class="l">Hours this week</div></div>
+    <div class="kpi"><div class="v">${money(totGross)}</div><div class="l">Gross this week</div></div>
+    <div class="kpi"><div class="v">${money(totBal)}</div><div class="l">Balance owed</div></div>
   </div>`;
 
   html += `<div class="card"><div class="table-scroll"><table class="data">
-    <tr><th>Employee</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Gross</th></tr>` +
+    <tr><th>Employee</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Gross</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr>` +
     rows.map(r => `<tr>
       <td><b>${esc(r.full_name || '')}</b><br><span class="muted">${esc(r.property || '')}${r.note ? ' · ' + esc(r.note) : ''}</span></td>
       <td class="num">${hrs(r.hours)}</td>
       <td class="num">${r.rate == null ? '—' : (r.pay_type === 'salary' ? money(r.rate) + '/yr' : money(r.rate))}</td>
       <td class="num"><b>${money(r.gross)}</b></td>
+      <td class="num">${r.payRec ? `<span class="pill paid">paid</span><br><span class="muted">${fmtDate((r.payRec.paid_at || '').slice(0, 10))}</span>` : '—'}</td>
+      <td class="num">${r.weekBal > 0.005 ? `<span class="pill owed">${money(r.weekBal)}</span>` : '<span class="muted">$0.00</span>'}</td>
+      <td class="num">${r.weekBal > 0.005 ? `<button class="btn-secondary btn-small" data-markpaid="${r.id}" data-week="${prWeek}" data-gross="${r.weekBal}" data-name="${esc(r.full_name || '')}">Mark paid</button>` : ''}</td>
     </tr>`).join('') +
     `<tr><td><b>Totals</b></td><td class="num"><b>${hrs(totHrs)}</b></td><td></td>
-     <td class="num"><b>${money(totGross)}</b></td></tr></table></div></div>`;
+     <td class="num"><b>${money(totGross)}</b></td><td></td>
+     <td class="num"><b>${money(r2(rows.reduce((s, r) => s + r.weekBal, 0)))}</b></td><td></td></tr></table></div></div>`;
+
+  if (withBal.length) {
+    html += `<div class="card"><div class="t" style="font-weight:800;margin-bottom:8px">💰 Outstanding balances — ${money(totBal)} total</div>` +
+      withBal.map(r => `<div class="rowline"><div><div class="t">${esc(r.full_name || '')}</div>
+        <div class="s">${r.unpaid.map(u => `${fmtDateShort(u.w)}: ${money(u.bal)}`).join(' · ')}</div></div>
+        <div class="num"><b>${money(r.totalBal)}</b></div></div>`).join('') + `</div>`;
+  } else {
+    html += `<div class="card"><div class="muted">✅ No outstanding balances — everyone is paid up.</div></div>`;
+  }
   html += `<div class="muted">Gross before taxes &amp; deductions. Export the CSV to hand to whoever cuts checks.</div>`;
 
   content.innerHTML = html;
   $('pr-prev').onclick = () => { prWeek = addDays(prWeek, -7); renderTab(); };
   $('pr-next').onclick = () => { prWeek = addDays(prWeek, 7); renderTab(); };
-  $('pr-csv').onclick = () => exportPayrollCsv(rows);
+  $('pr-csv').onclick = () => exportPayrollCsv(rows, prWeek);
+  content.querySelectorAll('[data-markpaid]').forEach(b => b.onclick = async () => {
+    const uid = b.dataset.markpaid, w = b.dataset.week, g = parseFloat(b.dataset.gross);
+    if (!confirm(`Record ${money(g)} paid to ${b.dataset.name} for week ${weekLabel(w)}?`)) return;
+    const { error } = await client.from('pr_payments').upsert({
+      user_id: uid, week_start: w, gross: g, paid_by: me.id,
+      paid_at: new Date().toISOString(), note: 'Payday ' + fmtDateShort(paydayOf(w))
+    }, {onConflict: 'user_id,week_start'});
+    if (error) alert(error.message); else renderTab();
+  });
+  const payAll = $('pr-payall');
+  if (payAll) payAll.onclick = async () => {
+    const total = r2(unpaidThisWeek.reduce((s, r) => s + r.weekBal, 0));
+    if (!confirm(`Mark the whole week paid? ${unpaidThisWeek.length} employees, ${money(total)} total.`)) return;
+    for (const r of unpaidThisWeek) {
+      const { error } = await client.from('pr_payments').upsert({
+        user_id: r.id, week_start: prWeek, gross: r.weekBal, paid_by: me.id,
+        paid_at: new Date().toISOString(), note: 'Payday ' + fmtDateShort(paydayOf(prWeek))
+      }, {onConflict: 'user_id,week_start'});
+      if (error) { alert('Stopped early: ' + error.message); break; }
+    }
+    renderTab();
+  };
   const closeBtn = $('pr-close');
   if (closeBtn) closeBtn.onclick = async () => {
     if (!confirm(`Close the week of ${weekLabel(prWeek)}? Employees won't be able to clock in or edit entries in this week.`)) return;
@@ -921,21 +1032,70 @@ async function viewPayroll(content) {
   };
 }
 
-function exportPayrollCsv(rows) {
-  const head = ['Name','Email','Property','Pay type','Hours','Rate','Gross pay'];
+function exportPayrollCsv(rows, friStr) {
+  const head = ['Name','Email','Property','Pay type','Week','Payday','Hours','Rate','Gross pay','Paid','Balance owed'];
   const lines = rows.map(r => [
     r.full_name || '', r.email || '', r.property || '', r.pay_type || '',
+    weekLabel(friStr), fmtDateShort(paydayOf(friStr)),
     hrs(r.hours),
     r.rate == null ? '' : (r.pay_type === 'salary' ? r.rate + '/yr' : r.rate),
-    r.gross.toFixed(2)
+    r.gross.toFixed(2),
+    r.payRec ? r.paid.toFixed(2) : '',
+    r.weekBal.toFixed(2)
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
   const csv = head.join(',') + '\n' + lines.join('\n');
   const blob = new Blob([csv], {type: 'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `payroll_${prWeek}.csv`;
+  a.download = `payroll_${friStr}_payday_${paydayOf(friStr)}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/* ---------- PAY HISTORY ---------- */
+let phUser = 'all';
+async function viewPayHistory(content) {
+  let q = client.from('pr_payments')
+    .select('*, pr_profiles!pr_payments_user_id_fkey(full_name, property)')
+    .order('week_start', {ascending: false}).limit(200);
+  if (!isManager()) q = q.eq('user_id', me.id);
+  else if (phUser !== 'all') q = q.eq('user_id', phUser);
+  const { data } = await q;
+  const pays = data || [];
+
+  let html = `<div class="section-head"><h2>Pay History</h2></div>`;
+
+  if (isManager()) {
+    const { data: profiles } = await client.from('pr_profiles')
+      .select('id, full_name').eq('active', true).order('full_name');
+    html += `<div class="card"><div class="inline-form"><label>Employee
+      <select id="ph-user"><option value="all">Everyone</option>
+      ${(profiles || []).map(p => `<option value="${p.id}" ${p.id === phUser ? 'selected' : ''}>${esc(p.full_name || '')}</option>`).join('')}</select>
+    </label></div></div>`;
+  }
+
+  if (!pays.length) {
+    html += `<div class="card"><div class="empty"><div class="big">🧾</div>No payments recorded yet.</div></div>`;
+  } else if (!isManager()) {
+    html += pays.map(p => `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b>${weekLabel(p.week_start)}</b><b style="font-size:18px">${money(p.gross)}</b></div>
+      <div class="rowline"><div class="s">Paid on</div><div class="num">${fmtDate((p.paid_at || '').slice(0, 10))}</div></div>
+      ${p.note ? `<div class="muted" style="margin-top:6px">${esc(p.note)}</div>` : ''}
+    </div>`).join('');
+  } else {
+    html += `<div class="card"><div class="table-scroll"><table class="data">
+      <tr><th>Employee</th><th>Week</th><th class="num">Gross</th><th>Paid on</th></tr>` +
+      pays.map(p => {
+        const nm = (p.pr_profiles && p.pr_profiles.full_name) || '—';
+        return `<tr><td><b>${esc(nm)}</b></td><td>${weekLabel(p.week_start)}</td>
+          <td class="num"><b>${money(p.gross)}</b></td><td>${fmtDate((p.paid_at || '').slice(0, 10))}${p.note ? `<br><span class="muted">${esc(p.note)}</span>` : ''}</td></tr>`;
+      }).join('') + `</table></div></div>`;
+  }
+  html += `<div class="muted">Payments recorded by your manager. Gross before taxes &amp; deductions.</div>`;
+  content.innerHTML = html;
+  const sel = $('ph-user');
+  if (sel) sel.onchange = e => { phUser = e.target.value; renderTab(); };
 }
 
 /* ---------- TEAM MANAGEMENT ---------- */
