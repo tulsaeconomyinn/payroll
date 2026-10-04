@@ -166,6 +166,7 @@ async function init() {
   $('forgot-btn').onclick = doForgotPassword;
   $('recovery-btn').onclick = doRecoverySave;
   initHomescreenHint();
+  applySafeAreaFallback();
   $('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
   $('unlinked-signout').onclick = async () => { await client.auth.signOut(); location.reload(); };
   $('signout-btn').onclick = async () => { await client.auth.signOut(); location.reload(); };
@@ -372,6 +373,23 @@ if ('serviceWorker' in navigator) {
 }
 
 /* ---------- Home-screen hint (dismissible, remembered) ---------- */
+/* iOS standalone fallback: some home-screen installs (e.g. added from a
+   non-Safari browser) don't resolve env() safe-area insets. Detect that and
+   compensate with fixed padding so the header never hides under the status bar. */
+function applySafeAreaFallback() {
+  try {
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    if (!isIOS || !isStandalone) return;
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;padding-top:env(safe-area-inset-top);';
+    document.body.appendChild(probe);
+    const px = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+    probe.remove();
+    if (px < 1) document.documentElement.classList.add('ios-standalone-nofit');
+  } catch (e) { /* never break the app over a layout probe */ }
+}
+
 function initHomescreenHint() {
   const hint = $('homescreen-hint');
   if (!hint) return;
