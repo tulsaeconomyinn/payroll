@@ -113,7 +113,7 @@ body {
   display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
 }
 .pill.pending { background: var(--warn-bg); color: var(--warn); }
-.pill.approved, .pill.open { background: var(--ok-bg); color: var(--brand); }
+.pill.approved, .pill.open, .pill.sent { background: var(--ok-bg); color: var(--brand); }
 .pill.denied { background: var(--err-bg); color: #b91c1c; }
 .pill.closed { background: #e5e7eb; color: #4b5563; }
 .pill.paid { background: var(--ok-bg); color: var(--brand); }
@@ -122,6 +122,8 @@ body {
 .rowline:last-child { border-bottom: none; }
 .rowline .t { font-weight: 700; }
 .rowline .s { font-size: 13px; color: var(--muted); }
+.invite-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.invite-row .link-btn { margin-top: 0; padding: 4px 2px; }
 table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.data th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 700; padding: 8px 6px; border-bottom: 2px solid var(--line); }
 table.data td { padding: 10px 6px; border-bottom: 1px solid var(--line); }
@@ -187,7 +189,7 @@ table.data tr:last-child td { border-bottom: none; }
   .btn-secondary { background: #222c2a; color: var(--ink); }
   .pill.pending { background: var(--warn-bg); color: #fbbf24; }
   .pill.denied { background: var(--err-bg); color: #f87171; }
-  .pill.approved, .pill.open { background: var(--ok-bg); color: #5ecb96; }
+  .pill.approved, .pill.open, .pill.sent { background: var(--ok-bg); color: #5ecb96; }
   .pill.closed { background: #2a3532; color: #9aa0a6; }
   .pill.paid { background: var(--ok-bg); color: #5ecb96; }
   .pill.owed { background: var(--warn-bg); color: #fbbf24; }
