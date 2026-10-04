@@ -76,8 +76,9 @@ body {
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .user-chip {
   position: relative; background: rgba(255,255,255,.14); padding: 8px 12px; border-radius: 20px;
-  font-size: 13px; cursor: pointer; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; cursor: pointer; max-width: 170px; white-space: nowrap;
 }
+#user-name { display: inline-block; max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .user-menu {
   position: absolute; right: 0; top: 42px; background: var(--card); color: var(--ink);
   border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.22);
