@@ -91,7 +91,13 @@ body {
 }
 .tab {
   flex: 1; border: none; background: none; padding: 10px 4px 8px; font-size: 20px; color: #9ca3af; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; position: relative;
+}
+.tab-badge {
+  position: absolute; top: 4px; right: calc(50% - 22px);
+  background: #dc2626; color: #fff; font-size: 10px; font-weight: 800;
+  min-width: 17px; height: 17px; line-height: 17px; text-align: center;
+  border-radius: 999px; padding: 0 4px;
 }
 .tab span { font-size: 11px; font-weight: 600; }
 .tab.active { color: var(--brand); }
@@ -208,4 +214,28 @@ table.data tr:last-child td { border-bottom: none; }
   .auth-tab.active { background: #1c2422; color: #5ecb96; }
   .auth-tabs { background: #141a19; }
   .warn-box { background: var(--warn-bg); border-color: #6b4d16; color: #fbbf24; }
+}
+
+/* ---------- v7: language toggle, segmented Yes/No, stubs, print ---------- */
+.lang-toggle { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 4px; }
+.lang-btn { border: 1px solid var(--line); background: var(--bg); color: var(--muted);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.lang-btn.active { background: #1C3530; color: #fff; border-color: #1C3530; }
+.seg-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg-toggle button { border: none; background: var(--bg); color: var(--muted);
+  padding: 8px 22px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.seg-toggle button.active { background: #1C3530; color: #fff; }
+.stub-card { cursor: pointer; }
+.stub-card:active { transform: scale(.99); }
+.stub-head { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0 12px; }
+.stub-total { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+
+/* Print: only the pay stub */
+@media print {
+  body { background: #fff; }
+  .app-header, .tab-bar, .modal-actions.no-print, #refresh-btn, .user-chip { display: none !important; }
+  .modal-overlay { position: static; background: none; padding: 0; }
+  .modal { box-shadow: none; max-height: none; margin: 0; max-width: none; }
+  #stub-print { color: #000; }
+  #stub-print .muted { color: #444; }
 }
