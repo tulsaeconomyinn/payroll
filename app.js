@@ -1,5 +1,5 @@
 /* Economy Suites Payroll — Supabase-backed time tracking + payroll */
-const APP_VERSION = 8; // bump on every deploy; checked against version.json
+const APP_VERSION = 9; // bump on every deploy; checked against version.json
 const SUPABASE_URL = 'https://vjaibkfckxauoxdsojfn.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_yqOFCrP8mBYm32x2cUYFYg_eHMDWB18';
 const APP_URL = 'https://tulsaeconomyinn.github.io/payroll/';
