@@ -4,7 +4,7 @@
 //   - Versioned static assets (URLs containing "?v="): cache-first.
 //   - Everything else: network, no caching.
 // On activate, delete any caches that don't match the current version.
-const CACHE_VERSION = 'esp-v4';
+const CACHE_VERSION = 'esp-v7';
 const STATIC_CACHE = 'esp-static-' + CACHE_VERSION;
 
 self.addEventListener('install', event => {
