@@ -7,6 +7,7 @@
   --warn-bg: #fef3c7; --ok-bg: #eaf4ee; --err-bg: #fef2f2;
   --radius: 16px;
 }
+html { background: var(--bg); }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -69,7 +70,7 @@ body {
 /* ---------- HEADER / NAV ---------- */
 .app-header {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; background: var(--brand-ink); color: #fff;
+  padding: max(env(safe-area-inset-top), 14px) 16px 14px; background: var(--brand-ink); color: #fff;
 }
 .header-title { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
@@ -86,7 +87,7 @@ body {
 .user-menu button:active { background: var(--bg); }
 .tab-bar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; display: flex;
-  background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+  background: var(--card); border-top: 1px solid var(--line); padding-bottom: max(env(safe-area-inset-bottom), 8px);
 }
 .tab {
   flex: 1; border: none; background: none; padding: 10px 4px 8px; font-size: 20px; color: #9ca3af; cursor: pointer;
