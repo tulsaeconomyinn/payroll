@@ -1,4 +1,5 @@
 /* Economy Suites Payroll — Supabase-backed time tracking + payroll */
+const APP_VERSION = 8; // bump on every deploy; checked against version.json
 const SUPABASE_URL = 'https://vjaibkfckxauoxdsojfn.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_yqOFCrP8mBYm32x2cUYFYg_eHMDWB18';
 const APP_URL = 'https://tulsaeconomyinn.github.io/payroll/';
@@ -379,6 +380,16 @@ function applyLangStatic() {
 function renderTabSafe() { if (me) renderTab(); }
 
 async function init() {
+  // Self-update backstop: if a newer deploy exists than this running copy, reload once.
+  try {
+    const vr = await fetch('version.json', {cache: 'no-store'});
+    const { v } = await vr.json();
+    if (v && v !== APP_VERSION && !sessionStorage.getItem('app_upgraded')) {
+      sessionStorage.setItem('app_upgraded', '1');
+      location.reload();
+      return;
+    }
+  } catch (e) { /* offline or first run — carry on */ }
   client.auth.onAuthStateChange(event => { if (event === 'PASSWORD_RECOVERY') showRecovery(); });
   const hasRecoveryCode = new URLSearchParams(location.search).get('code') || location.hash.includes('type=recovery');
   const { data } = await client.auth.getSession();
@@ -672,7 +683,14 @@ document.addEventListener('DOMContentLoaded', init);
 /* ---------- PWA: service worker (guarded, failures are silent) ---------- */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.update().catch(() => {}); // check for app updates on every launch
+      // When an update takes over, reload once into the new version.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!reloaded) { reloaded = true; location.reload(); }
+      });
+    }).catch(() => {});
   });
 }
 
