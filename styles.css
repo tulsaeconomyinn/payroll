@@ -39,6 +39,13 @@ body {
 .error-box { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 12px; padding: 10px; font-size: 14px; margin-bottom: 14px; }
 .info-box { background: var(--ok-bg); color: var(--brand); border: 1px solid #cde6d8; border-radius: 12px; padding: 10px; font-size: 14px; margin-bottom: 14px; }
 .link-btn { background: none; border: none; color: var(--brand); font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 12px; padding: 4px; }
+.hint-line { position: relative; margin-top: 14px; padding: 10px 32px 10px 12px; font-size: 12.5px; line-height: 1.45; color: #6b7280; background: #f6f8f7; border: 1px solid #e5e7eb; border-radius: 10px; }
+.hint-close { position: absolute; top: 6px; right: 6px; background: none; border: none; color: #9ca3af; font-size: 13px; cursor: pointer; padding: 4px; line-height: 1; }
+.hint-close:hover { color: #6b7280; }
+@media (prefers-color-scheme: dark) {
+  .hint-line { background: #22332e; border-color: #2e443c; color: #9ca3af; }
+  .hint-close { color: #6b7280; }
+}
 
 /* ---------- BUTTONS ---------- */
 .btn-primary {
