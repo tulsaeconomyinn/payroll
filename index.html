@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -20,27 +20,28 @@
 <!-- LOGIN VIEW -->
 <div id="login-view" class="login-wrap hidden">
   <div class="login-card">
+    <div class="lang-toggle"><button id="lang-en" class="lang-btn">EN</button><button id="lang-es" class="lang-btn">ES</button></div>
     <div class="login-logo">💼</div>
     <h1>Economy Suites Payroll</h1>
-    <p class="login-sub">Time tracking &amp; payroll for the team</p>
+    <p class="login-sub" id="login-sub">Time tracking &amp; payroll for the team</p>
     <div class="auth-tabs">
       <button id="tab-signin" class="auth-tab active">Sign in</button>
       <button id="tab-signup" class="auth-tab">Create account</button>
     </div>
     <div id="login-error" class="error-box hidden"></div>
     <div id="login-info" class="info-box hidden"></div>
-    <label>Email
+    <label><span id="login-email-label">Email</span>
       <input type="email" id="login-email" autocomplete="username" placeholder="you@example.com">
     </label>
-    <label>Password
+    <label><span id="login-password-label">Password</span>
       <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••">
     </label>
-    <label id="name-label" class="hidden">Full name
+    <label id="name-label" class="hidden"><span id="signup-name-label">Full name</span>
       <input type="text" id="signup-name" autocomplete="name" placeholder="Jane Doe">
     </label>
     <button id="login-btn" class="btn-primary">Sign in</button>
     <button id="forgot-btn" class="link-btn">Forgot password?</button>
-    <div id="homescreen-hint" class="hint-line hidden">💡 Tip: add this to your home screen for the full app experience — on iPhone tap Share, then Add to Home Screen. <button id="homescreen-hint-close" class="hint-close" aria-label="Dismiss">✕</button></div>
+    <div id="homescreen-hint" class="hint-line hidden"><span id="homescreen-hint-text"></span> <button id="homescreen-hint-close" class="hint-close" aria-label="Dismiss">✕</button></div>
   </div>
 </div>
 
@@ -48,13 +49,13 @@
 <div id="recovery-view" class="login-wrap hidden">
   <div class="login-card">
     <div class="login-logo">🔑</div>
-    <h1>Set new password</h1>
-    <p class="login-sub">Choose a new password for your account</p>
+    <h1 id="recovery-title">Set new password</h1>
+    <p class="login-sub" id="recovery-sub">Choose a new password for your account</p>
     <div id="recovery-error" class="error-box hidden"></div>
-    <label>New password
+    <label><span id="recovery-new-label">New password</span>
       <input type="password" id="recovery-password" autocomplete="new-password" placeholder="••••••••">
     </label>
-    <label>Confirm new password
+    <label><span id="recovery-confirm-label">Confirm new password</span>
       <input type="password" id="recovery-confirm" autocomplete="new-password" placeholder="••••••••">
     </label>
     <button id="recovery-btn" class="btn-primary">Save new password</button>
@@ -65,7 +66,7 @@
 <div id="unlinked-view" class="login-wrap hidden">
   <div class="login-card">
     <div class="login-logo">🪪</div>
-    <h1>Almost there</h1>
+    <h1 id="unlinked-title">Almost there</h1>
     <p class="login-sub" id="unlinked-msg">Your account isn't linked to an employee record yet — contact your manager to add you, then sign in again.</p>
     <button id="unlinked-signout" class="btn-primary">Sign out</button>
   </div>
@@ -74,12 +75,13 @@
 <!-- APP VIEW -->
 <div id="app-view" class="hidden">
   <header class="app-header">
-    <div class="header-title">💼 Economy Suites Payroll</div>
+    <div class="header-title" id="header-title">💼 Economy Suites Payroll</div>
     <div class="header-actions">
       <button id="refresh-btn" class="icon-btn" title="Refresh">↻</button>
       <div class="user-chip" id="user-chip">
         <span id="user-name"></span> ▾
         <div id="user-menu" class="user-menu hidden">
+          <button id="lang-menu-btn">🌐 English / Español</button>
           <button id="change-pw-btn">Change password</button>
           <button id="signout-btn">Sign out</button>
         </div>
@@ -97,6 +99,6 @@
   <div class="modal" id="modal-box"></div>
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
