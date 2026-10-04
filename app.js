@@ -1102,8 +1102,18 @@ async function viewPayHistory(content) {
 async function viewTeam(content) {
   const { data: profiles } = await client.from('pr_profiles').select('*').order('active', {ascending: false}).order('full_name');
   const { data: compRows } = await client.from('pr_comp').select('user_id, pay_rate');
+  const { data: inviteRows } = await client.from('pr_invites').select('profile_id');
   const compMap = {}; (compRows || []).forEach(c => compMap[c.user_id] = c.pay_rate);
+  const inviteSet = new Set((inviteRows || []).map(i => i.profile_id));
   const plist = profiles || [];
+
+  // Invite-email UI for staff who haven't created their account yet (server sends the email instantly on insert)
+  const inviteBlock = p => {
+    if (p.auth_user_id) return '';
+    if (inviteSet.has(p.id)) return `<div class="invite-row"><span class="pill sent">Invite sent ✓</span>
+      <button class="link-btn" data-invite="${p.id}">Resend</button></div>`;
+    return `<div class="invite-row"><button class="btn-secondary btn-small" data-invite="${p.id}">✉️ Send invite email</button></div>`;
+  };
 
   let html = `<div class="section-head"><h2>Staff</h2>
     <button class="btn-primary btn-small" id="team-add">+ Add employee</button></div>`;
@@ -1115,14 +1125,16 @@ async function viewTeam(content) {
         <div class="t">${esc(p.full_name || '(no name)')} ${p.role === 'manager' ? '⭐' : ''}</div>
         <div class="s">${esc(p.email || '')} · ${esc(p.property || '')} · ${esc(p.pay_type)} ·
           ${compMap[p.id] != null ? (p.pay_type === 'salary' ? money(compMap[p.id]) + '/yr' : money(compMap[p.id]) + '/hr') : 'no rate'} ·
-          ${p.auth_user_id ? 'account linked' : 'invite pending'}</div></div>
+          ${p.auth_user_id ? 'account linked' : 'no account yet'}</div></div>
         <div style="display:flex;gap:6px">
           <button class="btn-secondary btn-small" data-edit-staff="${p.id}">Edit</button>
           <button class="btn-secondary btn-small ${p.active ? 'btn-danger' : 'btn-ok'}" data-toggle-staff="${p.id}">${p.active ? 'Deactivate' : 'Reactivate'}</button>
-        </div></div></div>`).join('');
+        </div></div>
+      ${inviteBlock(p)}</div>`).join('');
   }
   content.innerHTML = html;
   $('team-add').onclick = () => staffModal(null);
+  content.querySelectorAll('[data-invite]').forEach(b => b.onclick = () => queueInvite(b.dataset.invite));
   content.querySelectorAll('[data-edit-staff]').forEach(b => b.onclick = async () => {
     const { data } = await client.from('pr_profiles').select('*').eq('id', b.dataset.editStaff).single();
     const { data: comp } = await client.from('pr_comp').select('*').eq('user_id', b.dataset.editStaff).maybeSingle();
@@ -1134,6 +1146,19 @@ async function viewTeam(content) {
     const { error } = await client.from('pr_profiles').update({active: !p.active}).eq('id', b.dataset.toggleStaff);
     if (error) alert(error.message); else renderTab();
   });
+}
+
+// Queue (or re-queue) an invite email for an unclaimed employee.
+// Deletes any existing pr_invites row then inserts a fresh one — the server
+// trigger fires on INSERT, so delete+insert re-fires it on Resend.
+async function queueInvite(profileId) {
+  const { data: p, error: e0 } = await client.from('pr_profiles').select('id, email').eq('id', profileId).single();
+  if (e0 || !p) { alert('Could not load employee.'); return; }
+  const del = await client.from('pr_invites').delete().eq('profile_id', p.id);
+  if (del.error) { alert(del.error.message); return; }
+  const { error } = await client.from('pr_invites').insert({ profile_id: p.id, email: p.email });
+  if (error) { alert(error.message); return; }
+  await renderTab();
 }
 
 function staffModal(p, comp) {
@@ -1159,7 +1184,7 @@ function staffModal(p, comp) {
       </label>
     </div>
     <label>Hire date<input type="date" id="st-hire" value="${p?.hire_date || ''}"></label>
-    ${isNew ? '<p class="muted">They\'ll create their account with this email, and it links automatically.</p>' : ''}
+    ${isNew ? '<p class="muted">After adding them, tap the ✉️ button on their Staff row to email them sign-up instructions.</p>' : ''}
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" id="st-save">${isNew ? 'Add employee' : 'Save'}</button>
