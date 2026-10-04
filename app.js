@@ -165,6 +165,7 @@ async function init() {
   $('login-btn').onclick = doAuth;
   $('forgot-btn').onclick = doForgotPassword;
   $('recovery-btn').onclick = doRecoverySave;
+  initHomescreenHint();
   $('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
   $('unlinked-signout').onclick = async () => { await client.auth.signOut(); location.reload(); };
   $('signout-btn').onclick = async () => { await client.auth.signOut(); location.reload(); };
@@ -362,6 +363,27 @@ async function ensurePeriod(friStr) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* ---------- PWA: service worker (guarded, failures are silent) ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+/* ---------- Home-screen hint (dismissible, remembered) ---------- */
+function initHomescreenHint() {
+  const hint = $('homescreen-hint');
+  if (!hint) return;
+  try {
+    if (localStorage.getItem('esp_hint_dismissed') === '1') return;
+  } catch (e) { /* storage unavailable — show the hint */ }
+  hint.classList.remove('hidden');
+  $('homescreen-hint-close').onclick = () => {
+    hint.classList.add('hidden');
+    try { localStorage.setItem('esp_hint_dismissed', '1'); } catch (e) {}
+  };
+}
 
 /* ================= EMPLOYEE VIEWS ================= */
 
